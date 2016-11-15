@@ -4,6 +4,7 @@
 
 #define ARRAY_SIZE(x) (sizeof(x) / sizeof((x)[0]))
 #define MQTT_TOPIC_LAST_WILL "state/sensor/hackcenterButtons"
+#define MQTT_IN_TOPIC "StarkTower/LivingRoom/Light1"
 
 const char* ssid     = "backspace IoT";
 const char* password = "--------";
@@ -29,6 +30,17 @@ WiFiClient wifiClient;
 PubSubClient mqttClient;
 Bounce debouncer = Bounce();
 
+void callback(char* topic, byte* payload, unsigned int length) {
+  Serial.print("Message arrived [");
+  Serial.print(topic);
+  Serial.print("] ");
+
+  char *payloadString = (char*) malloc(sizeof(byte) * (length +1));
+  payloadString = (char*) payload; //Terminieren
+  payloadString[length] = '\0';
+  Serial.println(payloadString);
+}
+
 void setup() {
 
   WiFi.hostname("ESP-HackcenterButtons");
@@ -46,6 +58,11 @@ void setup() {
     Serial.print(".");
     delay(500);
   }
+
+  mqttClient.setClient(wifiClient);
+  mqttClient.setServer(mqttHost, 1883);
+  mqttClient.setCallback(callback);
+
 
   Serial.println("");
   Serial.println("WiFi connected");
@@ -67,8 +84,6 @@ void connectMqtt() {
 
   bool newConnection = false;
   while (!mqttClient.connected()) {
-    mqttClient.setClient(wifiClient);
-    mqttClient.setServer(mqttHost, 1883);
     mqttClient.connect("hackcenterButtons", MQTT_TOPIC_LAST_WILL, 1, true, "disconnected");
 
     Serial.println("Connected");
@@ -77,6 +92,7 @@ void connectMqtt() {
   }
 
   if(newConnection) {
+    mqttClient.subscribe(MQTT_IN_TOPIC);
     mqttClient.publish(MQTT_TOPIC_LAST_WILL, "connected", true);
   }
 }
