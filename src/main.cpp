@@ -1,53 +1,64 @@
+#include <Arduino.h>
 #include <ESP8266WiFi.h>
 #include <PubSubClient.h>
 #include <Bounce2.h>
-
-#define ARRAY_SIZE(x) (sizeof(x) / sizeof((x)[0]))
-#define MQTT_TOPIC_LAST_WILL "state/sensor/hackcenterButtons"
-#define MQTT_IN_TOPIC "StarkTower/LivingRoom/Light1"
-
-const char* ssid     = "backspace IoT";
-const char* password = "--------";
-const char* mqttHost = "mqtt.core.bckspc.de";
+#include "config.h"
 
 typedef struct {
   uint8_t pin;
   const char* mqttTopic;
-  const char* valueUp;
-  const char* valueDown;
   uint16_t debounceMs;
   Bounce *debouncer;
 } t_buttonConfiguration;
 
+typedef struct {
+	const char* mqttTopic;
+	uint8_t pin;
+} t_ledConfiguration;
+
 t_buttonConfiguration buttons[] = {
-  {D1, "sensor/button/hackcenter/0", "released", "pressed", 200, NULL},
-  {D2, "sensor/button/hackcenter/1", "released", "pressed", 200, NULL},
-  {D3, "sensor/button/hackcenter/2", "released", "pressed", 200, NULL},
-  {D4, "sensor/button/hackcenter/3", "released", "pressed", 200, NULL}
+  {D1, MQTT_BASE_TOPIC "button/0", 200, NULL},
+  {D2, MQTT_BASE_TOPIC "button/1", 200, NULL},
+  {D3, MQTT_BASE_TOPIC "button/2", 200, NULL},
+  {D4, MQTT_BASE_TOPIC "button/3", 200, NULL}
+};
+
+t_ledConfiguration leds[] = {
+	{MQTT_BASE_TOPIC "led/0", D5},
+	{MQTT_BASE_TOPIC "led/0", D6},
+  {MQTT_BASE_TOPIC "led/0", D7},
+  {MQTT_BASE_TOPIC "led/0", D8},
 };
 
 WiFiClient wifiClient;
-PubSubClient mqttClient;
-Bounce debouncer = Bounce();
+PubSubClient mqttClient(wifiClient);
+
+void switchLed(t_ledConfiguration led, char* payload) {
+  if(strcmp(payload, "ON")){
+    digitalWrite(led.pin, HIGH);
+  }
+  else if(strcmp(payload, "OFF")){
+    digitalWrite(led.pin, LOW);
+  }
+}
 
 void callback(char* topic, byte* payload, unsigned int length) {
   Serial.print("Message arrived [");
   Serial.print(topic);
   Serial.print("] ");
 
-  char *payloadString = (char*) malloc(sizeof(byte) * (length +1));
-  payloadString = (char*) payload; //Terminieren
-  payloadString[length] = '\0';
-  Serial.println(payloadString);
+  for(auto led : leds) {
+	  if (strcmp(led.mqttTopic, topic) == 0) {
+		  switchLed(led, (char*)payload);
+		  break;
+	  }
+  }
 }
 
-void setup() {
+void wifiSetup() {
 
-  WiFi.hostname("ESP-HackcenterButtons");
+  WiFi.hostname(HOSTNAME);
   WiFi.mode(WIFI_STA);
-
-  Serial.begin(115200);
-  delay(10);
 
   Serial.print("Connecting to ");
   Serial.println(ssid);
@@ -59,26 +70,34 @@ void setup() {
     delay(500);
   }
 
-  mqttClient.setClient(wifiClient);
-  mqttClient.setServer(mqttHost, 1883);
-  mqttClient.setCallback(callback);
-
-
   Serial.println("");
   Serial.println("WiFi connected");
   Serial.println("IP address: ");
   Serial.println(WiFi.localIP());
-
-  for (uint8_t i = 0; i < ARRAY_SIZE(buttons); i++) {
-     pinMode(buttons[i].pin, INPUT_PULLUP);
-
-     buttons[i].debouncer = new Bounce();
-     buttons[i].debouncer->attach(buttons[i].pin);
-     buttons[i].debouncer->interval(buttons[i].debounceMs);
-  }
 }
 
-int value = 0;
+void setup() {
+
+  Serial.begin(115200);
+  delay(10);
+
+  wifiSetup();
+
+  mqttClient.setServer(mqttHost, 1883);
+  mqttClient.setCallback(callback);
+
+
+  for (auto button : buttons) {
+     pinMode(button.pin, INPUT_PULLUP);
+
+     button.debouncer = new Bounce();
+     button.debouncer->attach(button.pin);
+     button.debouncer->interval(button.debounceMs);
+  }
+  for (auto led : leds){
+    pinMode(led.pin, OUTPUT);
+  }
+}
 
 void connectMqtt() {
 
@@ -92,7 +111,9 @@ void connectMqtt() {
   }
 
   if(newConnection) {
-    mqttClient.subscribe(MQTT_IN_TOPIC);
+    for (auto led : leds){
+      mqttClient.subscribe(led.mqttTopic);
+    }
     mqttClient.publish(MQTT_TOPIC_LAST_WILL, "connected", true);
   }
 }
@@ -102,13 +123,13 @@ void loop() {
   connectMqtt();
   mqttClient.loop();
 
-  for (uint8_t i = 0; i < ARRAY_SIZE(buttons); i++) {
-    buttons[i].debouncer->update();
+  for (auto button : buttons) {
+    button.debouncer->update();
 
-    if(buttons[i].debouncer->rose()) {
-      mqttClient.publish(buttons[i].mqttTopic, buttons[i].valueUp, true);
-    } else if(buttons[i].debouncer->fell()) {
-      mqttClient.publish(buttons[i].mqttTopic, buttons[i].valueDown, true);
+    if(button.debouncer->rose()) {
+      mqttClient.publish(button.mqttTopic, "pressed", true);
+    } else if(button.debouncer->fell()) {
+      mqttClient.publish(button.mqttTopic, "released", true);
     }
   }
 }

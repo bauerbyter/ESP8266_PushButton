@@ -1,0 +1,8 @@
+
+#define MQTT_BASE_TOPIC "hid/"
+#define MQTT_TOPIC_LAST_WILL MQTT_BASE_TOPIC "state"
+#define HOSTNAME "ESP-HackcenterButtons"
+
+const char* ssid     = "backspace IoT";
+const char* password = "--------";
+const char* mqttHost = "mqtt.core.bckspc.de";
