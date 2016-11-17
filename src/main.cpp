@@ -34,10 +34,10 @@ WiFiClient wifiClient;
 PubSubClient mqttClient(wifiClient);
 
 void switchLed(t_ledConfiguration led, char* payload) {
-  if(strcmp(payload, "ON")){
+  if(strcmp(payload, "ON") == 0){
     digitalWrite(led.pin, HIGH);
   }
-  else if(strcmp(payload, "OFF")){
+  else if(strcmp(payload, "OFF") == 0){
     digitalWrite(led.pin, LOW);
   }
 }
